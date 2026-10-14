@@ -56,9 +56,13 @@ export function YoutubeImport() {
   const [doneName, setDoneName] = useState<string | null>(null);
   const autoRef = useRef(0);
   const startedFor = useRef<string | null>(null);
+  const busyRef = useRef(false);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      startedFor.current = null;
+      return;
+    }
     const folder = folders.some((f) => f.id === filter) ? filter : "unfiled";
     setFolderId(folder);
     setUrl(seed);
@@ -69,10 +73,14 @@ export function YoutubeImport() {
     setError(null);
     setDoneName(null);
     startedFor.current = null;
+    busyRef.current = false;
     api.youtubePrepare().catch(() => undefined);
     const t = window.setTimeout(() => inputRef.current?.focus(), 40);
     return () => window.clearTimeout(t);
-  }, [open, seed, filter, folders]);
+    // Reset only when the dialog opens or the pasted link changes.
+    // Snapshot updates (a successful import) must not restart conversion.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, seed]);
 
   useEffect(() => {
     if (!open) return;
@@ -85,7 +93,7 @@ export function YoutubeImport() {
   }, [open]);
 
   useEffect(() => {
-    if (!open || busy || doneName) return;
+    if (!open || busy || doneName || error) return;
     const trimmed = url.trim();
     if (!isYoutubeUrl(trimmed)) {
       setPreview(null);
@@ -111,21 +119,22 @@ export function YoutubeImport() {
         });
     }, 180);
     return () => window.clearTimeout(handle);
-  }, [url, open, busy, doneName]);
+  }, [url, open, busy, doneName, error]);
 
   useEffect(() => {
     if (!open || !preview || busy || doneName || error) return;
     if (startedFor.current === preview.url) return;
-    startedFor.current = preview.url;
     const handle = window.setTimeout(() => {
-      startImport();
+      startedFor.current = preview.url;
+      void startImport();
     }, 280);
     return () => window.clearTimeout(handle);
   }, [preview, open, busy, doneName, error]);
 
   async function startImport() {
     const trimmed = url.trim();
-    if (!isYoutubeUrl(trimmed) || busy) return;
+    if (!isYoutubeUrl(trimmed) || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     setDoneName(null);
@@ -145,6 +154,7 @@ export function YoutubeImport() {
       }
       setProgress(null);
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }

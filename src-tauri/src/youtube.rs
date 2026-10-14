@@ -3,7 +3,11 @@ use std::{
     io::{BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
+    thread,
     time::Duration,
 };
 
@@ -312,6 +316,16 @@ fn parse_percent(line: &str) -> Option<f32> {
         .map(|v| v.clamp(0.0, 100.0))
 }
 
+fn pump_lines<R: Read + Send + 'static>(reader: R, tx: mpsc::Sender<String>) {
+    thread::spawn(move || {
+        for line in BufReader::new(reader).lines().map_while(Result::ok) {
+            if tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+}
+
 fn run_ytdlp(
     app: &AppHandle,
     ytdlp: &Path,
@@ -328,52 +342,57 @@ fn run_ytdlp(
         .spawn()
         .map_err(|e| format!("Could not start the YouTube engine: {e}"))?;
     track_child(app, child.id());
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
-    let mut combined = String::new();
-    if let Some(out) = stdout {
-        for line in BufReader::new(out).lines().map_while(Result::ok) {
-            if check_cancel(app).is_err() {
-                let _ = child.kill();
-                clear_child(app);
-                return Err("Cancelled.".into());
-            }
-            combined.push_str(&line);
-            combined.push('\n');
-            if let Some(pct) = parse_percent(&line) {
-                emit_progress(
-                    app,
-                    stage,
-                    base + (pct / 100.0) * span,
-                    if stage == "downloading" {
-                        "Downloading audio…"
-                    } else {
-                        "Converting to MP3…"
-                    },
-                );
-            }
-        }
+    let (tx, rx) = mpsc::channel::<String>();
+    if let Some(out) = child.stdout.take() {
+        pump_lines(out, tx.clone());
     }
-    if let Some(err) = stderr {
-        for line in BufReader::new(err).lines().map_while(Result::ok) {
-            combined.push_str(&line);
-            combined.push('\n');
+    if let Some(err) = child.stderr.take() {
+        pump_lines(err, tx.clone());
+    }
+    drop(tx);
+
+    let mut combined = String::new();
+    let mut best = 0.0f32;
+    for line in rx {
+        if check_cancel(app).is_err() {
+            let _ = child.kill();
+            clear_child(app);
+            return Err("Cancelled.".into());
+        }
+        combined.push_str(&line);
+        combined.push('\n');
+        if let Some(pct) = parse_percent(&line) {
+            if pct + 0.5 < best {
+                continue;
+            }
+            best = best.max(pct);
+            emit_progress(
+                app,
+                stage,
+                base + (best / 100.0) * span,
+                if stage == "downloading" {
+                    "Downloading audio…"
+                } else {
+                    "Converting to MP3…"
+                },
+            );
         }
     }
     let status = child.wait().map_err(|e| format!("YouTube engine stopped: {e}"))?;
     clear_child(app);
     check_cancel(app)?;
     if !status.success() {
-        if combined.contains("Duration") && combined.to_lowercase().contains("filter") {
+        let lower = combined.to_lowercase();
+        if combined.contains("Duration") && lower.contains("filter") {
             return Err(format!(
                 "That video is longer than {} minutes. Trim it, or pick a shorter clip.",
                 MAX_CLIP_SECONDS / 60
             ));
         }
-        if combined.to_lowercase().contains("private") {
+        if lower.contains("private") {
             return Err("That video is private.".into());
         }
-        if combined.to_lowercase().contains("unavailable") {
+        if lower.contains("unavailable") {
             return Err("That video is unavailable.".into());
         }
         return Err("Could not fetch audio from that link.".into());
@@ -445,20 +464,33 @@ fn import_url_inner(
     fs::create_dir_all(&work).map_err(|e| format!("Could not create a temp folder: {e}"))?;
     let template = work.join("%(id)s.%(ext)s");
 
-    let args = vec![
+    let mut args = vec![
         "--no-playlist".into(),
         "--no-warnings".into(),
         "--newline".into(),
         "--no-mtime".into(),
         "--restrict-filenames".into(),
+        "--retries".into(),
+        "8".into(),
+        "--fragment-retries".into(),
+        "8".into(),
         "-f".into(),
         "bestaudio[ext=m4a]/bestaudio/best".into(),
         "--match-filter".into(),
-        format!("!is_live & duration <= {}", MAX_CLIP_SECONDS),
+        "!is_live".into(),
         "-o".into(),
         template.to_string_lossy().into_owned(),
         preview.url.clone(),
     ];
+    if let Some(ffmpeg) = &ffmpeg {
+        args.splice(
+            args.len() - 1..args.len() - 1,
+            [
+                "--ffmpeg-location".into(),
+                ffmpeg.to_string_lossy().into_owned(),
+            ],
+        );
+    }
 
     emit_progress(app, "downloading", 30.0, "Downloading audio…");
     if let Err(err) = run_ytdlp(app, &ytdlp, &args, "downloading", 30.0, 40.0) {
@@ -479,23 +511,30 @@ fn import_url_inner(
         {
             emit_progress(app, "converting", 74.0, "Converting to MP3…");
             let mp3 = work.join(format!("{}.mp3", preview.video_id));
-            let conv = hidden_command(&ffmpeg)
-                .args([
-                    "-y",
-                    "-hide_banner",
-                    "-loglevel",
-                    "error",
-                    "-i",
-                    &audio.to_string_lossy(),
-                    "-vn",
-                    "-codec:a",
-                    "libmp3lame",
-                    "-qscale:a",
-                    "5",
-                    mp3.to_str().unwrap_or("out.mp3"),
-                ])
-                .output();
-            if conv.map(|out| out.status.success()).unwrap_or(false) && mp3.exists() {
+            let mp3_out = mp3.to_string_lossy().into_owned();
+            let input = audio.to_string_lossy().into_owned();
+            let try_mp3 = |codec: &str| {
+                hidden_command(&ffmpeg)
+                    .args([
+                        "-y",
+                        "-hide_banner",
+                        "-loglevel",
+                        "error",
+                        "-i",
+                        &input,
+                        "-vn",
+                        "-codec:a",
+                        codec,
+                        "-qscale:a",
+                        "5",
+                        &mp3_out,
+                    ])
+                    .output()
+                    .map(|out| out.status.success())
+                    .unwrap_or(false)
+                    && mp3.exists()
+            };
+            if try_mp3("libmp3lame") || try_mp3("mp3") {
                 audio = mp3;
             }
         }
@@ -510,6 +549,8 @@ fn import_url_inner(
             return Err(err);
         }
     };
+    state.persist_library();
+    state.emit_snapshot(app);
     let _ = fs::remove_dir_all(&work);
     emit_progress(app, "done", 100.0, "Added to your board.");
     Ok(sound)

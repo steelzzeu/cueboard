@@ -43,13 +43,23 @@
     ],
     "publisher": "Cueboard",
     "copyright": "Cueboard",
+    "license": "LicenseRef-Cueboard-Terms",
+    "licenseFile": "windows/TERMS.txt",
+    "homepage": "https://github.com/steelzzeu/cueboard",
     "category": "Entertainment",
     "shortDescription": "A native soundboard for streamers and gamers",
     "longDescription": "Cueboard is a Windows desktop soundboard with global hotkeys, a persistent local library, and low-latency playback for livestreamers, creators and gamers.",
     "windows": {
       "nsis": {
         "installMode": "currentUser",
-        "displayLanguageSelector": false
+        "displayLanguageSelector": false,
+        "startMenuFolder": "Cueboard",
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "headerImage": "windows/nsis-header.bmp",
+        "sidebarImage": "windows/nsis-sidebar.bmp",
+        "uninstallerHeaderImage": "windows/nsis-header.bmp",
+        "template": "windows/installer.nsi"
       }
     }
   }
