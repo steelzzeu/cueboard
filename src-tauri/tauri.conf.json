@@ -44,7 +44,7 @@
     "publisher": "Cueboard",
     "copyright": "Cueboard",
     "license": "LicenseRef-Cueboard-Terms",
-    "licenseFile": "windows/TERMS.txt",
+    "licenseFile": "windows/TERMS.rtf",
     "homepage": "https://github.com/steelzzeu/cueboard",
     "category": "Entertainment",
     "shortDescription": "A native soundboard for streamers and gamers",

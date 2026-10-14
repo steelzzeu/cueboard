@@ -79,6 +79,7 @@ Var OldMainBinaryName
 
 Name "${PRODUCTNAME}"
 BrandingText "${COPYRIGHT}"
+LicenseBkColor 0x001C1C1C
 OutFile "${OUTFILE}"
 
 ; We don't actually use this value as default install path,
@@ -162,9 +163,11 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 
 ; Cueboard charcoal installer chrome
 !define MUI_BGCOLOR 1C1C1C
-!define MUI_TEXTCOLOR F4F4F5
+!define MUI_TEXTCOLOR FFFFFF
 !define MUI_LICENSEPAGE_BGCOLOR 1C1C1C
-!define MUI_INSTFILESPAGE_COLORS "F4F4F5 1C1C1C"
+!define MUI_INSTFILESPAGE_COLORS "FFFFFF 1C1C1C"
+; MUI only unthemes finish checkboxes in high-contrast unless this is set (bug #443)
+!define MUI_FORCECLASSICCONTROLS
 !define MUI_LICENSEPAGE_CHECKBOX
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "Cueboard"
@@ -178,6 +181,54 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 !define MUI_FINISHPAGE_RUN_TEXT "Open Cueboard"
 !define MUI_UNCONFIRMPAGE_TEXT_TOP "This removes Cueboard from this user account. Your sound library in AppData is kept unless you choose to delete application data."
 
+; Themed Static/Edit/Checkbox ignore SetCtlColors. Strip the theme, then paint.
+; Do not use EnumChildWindows callbacks — they AV inside NSIS.
+!macro CuePaintKids _root _id
+  Push $R7
+  Push $R9
+  StrCpy $R7 0
+  CueKids_${_id}:
+    IntOp $R7 $R7 + 1
+    IntCmp $R7 1300 CueKidsDone_${_id}
+    GetDlgItem $R9 ${_root} $R7
+    IntCmp $R9 0 CueKids_${_id}
+    IntCmp $R7 3 CueKids_${_id} CueKids_${_id} 0
+    System::Call 'UXTHEME::SetWindowTheme(p r9, w " ", w " ")'
+    SetCtlColors $R9 FFFFFF 1C1C1C
+    SendMessage $R9 0x443 0 0x001C1C1C
+    Goto CueKids_${_id}
+  CueKidsDone_${_id}:
+  Pop $R9
+  Pop $R7
+!macroend
+
+!macro CuePaintAll _id
+  SetCtlColors $HWNDPARENT FFFFFF 1C1C1C
+  !insertmacro CuePaintKids $HWNDPARENT ${_id}p
+  FindWindow $R8 "#32770" "" $HWNDPARENT
+  IntCmp $R8 0 CueNoInner_${_id}
+    SetCtlColors $R8 FFFFFF 1C1C1C
+    !insertmacro CuePaintKids $R8 ${_id}i
+  CueNoInner_${_id}:
+  GetDlgItem $R8 $HWNDPARENT 1044
+  IntCmp $R8 0 CueNoIo_${_id}
+    SetCtlColors $R8 FFFFFF 1C1C1C
+    !insertmacro CuePaintKids $R8 ${_id}f
+  CueNoIo_${_id}:
+!macroend
+
+Function CueOnShow
+  !insertmacro CuePaintAll inst
+FunctionEnd
+
+Function un.CueOnShow
+  !insertmacro CuePaintAll uninst
+FunctionEnd
+
+!macro CuePaintControls _id
+  !insertmacro CuePaintAll ${_id}
+!macroend
+
 ; Define registry key to store installer language
 !define MUI_LANGDLL_REGISTRY_ROOT "HKCU"
 !define MUI_LANGDLL_REGISTRY_KEY "${MANUPRODUCTKEY}"
@@ -186,11 +237,13 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 ; Installer pages, must be ordered as they appear
 ; 1. Welcome Page
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW CueOnShow
 !insertmacro MUI_PAGE_WELCOME
 
 ; 2. License Page (if defined)
 !if "${LICENSE}" != ""
  !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
+ !define MUI_PAGE_CUSTOMFUNCTION_SHOW CueOnShow
  !insertmacro MUI_PAGE_LICENSE "${LICENSE}"
 !endif
 
@@ -405,12 +458,14 @@ FunctionEnd
 
 ; 5. Choose install directory page
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW CueOnShow
 !insertmacro MUI_PAGE_DIRECTORY
 
 ; 6. Start menu shortcut page
 Var AppStartMenuFolder
 !if "${STARTMENUFOLDER}" != ""
  !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
+ !define MUI_PAGE_CUSTOMFUNCTION_SHOW CueOnShow
  !define MUI_STARTMENUPAGE_DEFAULTFOLDER "${STARTMENUFOLDER}"
 !else
  !define MUI_PAGE_CUSTOMFUNCTION_PRE Skip
@@ -418,6 +473,7 @@ Var AppStartMenuFolder
 !insertmacro MUI_PAGE_STARTMENU Application $AppStartMenuFolder
 
 ; 7. Installation page
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW CueOnShow
 !insertmacro MUI_PAGE_INSTFILES
 
 ; 8. Finish page
@@ -433,6 +489,7 @@ Var AppStartMenuFolder
 !define MUI_FINISHPAGE_RUN
 !define MUI_FINISHPAGE_RUN_FUNCTION RunMainBinary
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW CueOnShow
 !insertmacro MUI_PAGE_FINISH
 
 Function RunMainBinary
@@ -446,6 +503,7 @@ Var DeleteAppDataCheckboxState
 !define /ifndef WS_EX_LAYOUTRTL 0x00400000
 !define MUI_PAGE_CUSTOMFUNCTION_SHOW un.ConfirmShow
 Function un.ConfirmShow ; Add add a `Delete app data` check box
+ !insertmacro CuePaintControls unconfirm
  ; $1 inner dialog HWND
  ; $2 window DPI
  ; $3 style
@@ -473,6 +531,8 @@ Function un.ConfirmShow ; Add add a `Delete app data` check box
  Pop $DeleteAppDataCheckbox
  SendMessage $HWNDPARENT ${WM_GETFONT} 0 0 $1
  SendMessage $DeleteAppDataCheckbox ${WM_SETFONT} $1 1
+ System::Call 'uxtheme::SetWindowTheme(p $DeleteAppDataCheckbox, w " ", w " ")'
+ SetCtlColors $DeleteAppDataCheckbox FFFFFF 1C1C1C
 FunctionEnd
 !define MUI_PAGE_CUSTOMFUNCTION_LEAVE un.ConfirmLeave
 Function un.ConfirmLeave
@@ -482,6 +542,7 @@ FunctionEnd
 !insertmacro MUI_UNPAGE_CONFIRM
 
 ; 2. Uninstalling Page
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW un.CueOnShow
 !insertmacro MUI_UNPAGE_INSTFILES
 
 ;Languages
