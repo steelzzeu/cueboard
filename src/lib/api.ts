@@ -1,0 +1,47 @@
+import { invoke } from "@tauri-apps/api/core";
+import type {
+  AudioPayload,
+  DeviceInfo,
+  Folder,
+  Hotkey,
+  HotkeyCheck,
+  ImportReport,
+  PlayingVoice,
+  Settings,
+  Snapshot,
+  Sound,
+  YoutubePreview,
+} from "@/lib/types";
+
+export const api = {
+  snapshot: () => invoke<Snapshot>("get_snapshot"),
+  playback: () => invoke<PlayingVoice[]>("get_playback"),
+  audio: () => invoke<AudioPayload>("get_audio"),
+  devices: () => invoke<DeviceInfo[]>("list_devices"),
+  setActive: (active: boolean) => invoke<void>("set_active", { active }),
+  play: (id: string) => invoke<void>("play_sound", { id }),
+  preview: (id: string) => invoke<void>("preview_sound", { id }),
+  stop: (id: string) => invoke<void>("stop_sound", { id }),
+  stopAll: () => invoke<void>("stop_all"),
+  updateSound: (sound: Sound) => invoke<Sound>("update_sound", { sound }),
+  removeSound: (id: string) => invoke<void>("remove_sound", { id }),
+  createFolder: (name: string) => invoke<Folder>("create_folder", { name }),
+  renameFolder: (id: string, name: string) => invoke<void>("rename_folder", { id, name }),
+  deleteFolder: (id: string) => invoke<void>("delete_folder", { id }),
+  updateSettings: (settings: Settings) => invoke<Settings>("update_settings", { settings }),
+  checkHotkey: (hotkey: Hotkey, ignore?: string) =>
+    invoke<HotkeyCheck>("check_hotkey_cmd", { hotkey, ignore: ignore ?? null }),
+  importPaths: (paths: string[]) => invoke<ImportReport>("import_paths", { paths }),
+  pickImport: () => invoke<ImportReport>("pick_import_files"),
+  exportLibrary: () => invoke<boolean>("export_library"),
+  importPack: () => invoke<ImportReport>("import_pack"),
+  setCompact: (compact: boolean) => invoke<void>("set_compact", { compact }),
+  setViewMode: (mode: string) => invoke<void>("set_view_mode", { mode }),
+  openLibraryFolder: () => invoke<void>("open_library_folder"),
+  libraryPath: () => invoke<string>("library_path"),
+  youtubePreview: (url: string) => invoke<YoutubePreview>("youtube_preview", { url }),
+  youtubePrepare: () => invoke<void>("youtube_prepare"),
+  youtubeImport: (url: string, folderId: string | null) =>
+    invoke<Sound>("youtube_import", { url, folderId }),
+  youtubeCancel: () => invoke<void>("youtube_cancel"),
+};
