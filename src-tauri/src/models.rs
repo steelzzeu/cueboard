@@ -177,7 +177,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            version: 1,
+            version: 2,
             output_device: None,
             output_device_name: None,
             monitor_device: None,
@@ -200,7 +200,7 @@ impl Default for Settings {
                 code: "F10".into(),
                 label: "F10".into(),
             }),
-            minimize_behavior: MinimizeBehavior::Disable,
+            minimize_behavior: MinimizeBehavior::KeepActive,
             restore_on_show: true,
             close_to_tray: true,
             start_with_windows: false,
@@ -223,6 +223,12 @@ impl Settings {
         self.max_voices = self.max_voices.clamp(1, 64);
         if self.view_mode != "grid" && self.view_mode != "list" {
             self.view_mode = "grid".into();
+        }
+        if self.version < 2 {
+            if self.minimize_behavior == MinimizeBehavior::Disable {
+                self.minimize_behavior = MinimizeBehavior::KeepActive;
+            }
+            self.version = 2;
         }
     }
 }

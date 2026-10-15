@@ -223,29 +223,29 @@ export function SettingsView() {
           </TabsContent>
 
           <TabsContent value="window" className="mt-6 grid gap-6">
-            <Section title="When the window is minimised or hidden" body="By default, sound shortcuts turn off so they cannot fire while you type or play. The enable/disable shortcut remains available unless you choose strict mode.">
+            <Section title="When the window is minimised or hidden" body="By default the board stays live, so hotkeys still fire and audio keeps playing in the tray or on the taskbar.">
               <RadioGroup
                 value={settings.minimizeBehavior}
                 onValueChange={(value) => save({ minimizeBehavior: value as MinimizeBehavior })}
                 className="gap-3"
               >
                 <Choice
+                  id="min-keep"
+                  value="keepActive"
+                  title="Keep playing"
+                  body="Recommended. Sounds and shortcuts stay live while Cueboard is minimised or in the tray."
+                />
+                <Choice
                   id="min-disable"
                   value="disable"
                   title="Disable sound shortcuts"
-                  body="Recommended. The toggle shortcut can turn the board back on without restoring the window."
+                  body="Hotkeys stop firing until you turn the board back on. The toggle shortcut still works."
                 />
                 <Choice
                   id="min-strict"
                   value="strict"
                   title="Disable everything until the window is restored"
                   body="Sound shortcuts and the toggle shortcut are released. You must show Cueboard to use it again."
-                />
-                <Choice
-                  id="min-keep"
-                  value="keepActive"
-                  title="Keep the current state"
-                  body="For users who want the board live in the tray or on a second display."
                 />
               </RadioGroup>
             </Section>
@@ -270,7 +270,7 @@ export function SettingsView() {
             />
             <ToggleRow
               title="Start minimised"
-              body="Open hidden in the tray. Combined with disable-on-minimise, shortcuts stay off until you show the window or press the toggle shortcut."
+              body="Open hidden in the tray. Sounds still play unless you change the minimised rule above."
               checked={settings.startMinimized}
               onCheckedChange={(startMinimized) => save({ startMinimized })}
             />

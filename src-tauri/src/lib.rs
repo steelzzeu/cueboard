@@ -122,6 +122,7 @@ fn init_app(app: AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     settings.sanitize();
     let library: crate::models::Library = load_json(&paths.library);
     let saver = Saver::spawn(paths.settings.clone(), paths.library.clone());
+    saver.settings(settings.clone());
 
     let (eng_tx, eng_rx) = crossbeam_channel::unbounded();
     let audio = engine::spawn(

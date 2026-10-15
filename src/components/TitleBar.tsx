@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { formatHotkey } from "@/lib/hotkey";
 import { useAppStore } from "@/store/app";
+import { BrandMark } from "@/components/BrandMark";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -31,10 +32,9 @@ export function TitleBar() {
   return (
     <header className="flex h-11 shrink-0 items-center border-b bg-sidebar pr-0">
       <div data-tauri-drag-region className="flex min-w-0 flex-1 items-center gap-3 px-3">
-        <div className="flex size-6 items-center justify-center rounded-sm border border-border bg-card text-[11px] font-semibold tracking-tight">
-          CB
+        <div className="flex size-6 items-center justify-center" aria-label="Cueboard">
+          <BrandMark className="size-5" />
         </div>
-        <span className="text-[13px] font-medium tracking-tight">Cueboard</span>
         <Badge
           variant="outline"
           className={
